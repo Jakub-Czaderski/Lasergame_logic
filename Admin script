@@ -1,0 +1,1213 @@
+#!/usr/bin/env python3
+while True:
+    if globals().get("shut_up") != "extend":
+        for k in list(globals().keys()):
+            if not k.startswith("__"):
+                del globals()[k]
+
+    import redis
+    import random
+    import tkinter as tk
+    import atexit
+    import sys
+    from PIL import ImageTk, Image
+    from tkinter import simpledialog 
+    from tkinter import messagebox
+    import atexit
+    import time
+    import json
+    from pathlib import Path
+    import os
+    from datetime import datetime, timedelta
+
+    JSON_FILE = os.path.expanduser("~/.settings.json")
+    r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+
+    def create_profile(profile_filename):
+        folder_path = Path(os.path.expanduser("~/.visitors")) / f"{profile_filename}.json"
+        os.makedirs(folder_path.parent, exist_ok=True)
+        sorted_colours = set()
+        profile_data = {
+            "playercount": globals().get("playercount")
+        }
+        for C in range(1, globals().get("playercount") + 1):
+            profile_data[f"player_name_{C}"] = globals().get(f"player_name_{C}")
+            player_colour = globals().get(f"colour_{C}")
+            profile_data[f"colour_{C}"] = player_colour
+            if player_colour and player_colour not in sorted_colours and globals().get("team_how") == "dependant":
+                profile_data[player_colour] = globals().get(player_colour)
+                sorted_colours.add(player_colour)
+            else:
+                profile_data[f"team_name_alt_{C}"] = globals().get(f"team_name_alt_{C}")
+            profile_data[f"which_h_{C}?"] = globals().get(f"which_h_{C}?")
+            profile_data[f"which_v_{C}?"] = globals().get(f"which_v_{C}?")
+            if f"extra_colour_{C}" in globals():
+                profile_data[f"extra_colour_{C}"] = globals().get(f"extra_colour_{C}")
+                profile_data[f"h_pos_{C}"] = globals().get(f"h_pos_{C}")
+                profile_data[f"v_pos_{C}"] = globals().get(f"v_pos_{C}")
+                profile_data[f"death_penalty"] = globals().get("death_penalty")
+        profile_data["time_stamp"] = datetime.now().strftime("%Y-%m-%d")
+        with open(folder_path, "w", encoding="utf-8") as file:
+            json.dump(profile_data, file, indent=4)
+
+
+    def load_profile():
+        whichprofile = tk.Toplevel(root)
+        whichprofile.title("Select Profile")
+        whichprofile.geometry("450x350")
+        whichprofile.transient(root)
+
+        label = tk.Label(whichprofile, text="Profiles:", font=("Arial", 16, "bold"))
+        label.pack(pady=10)
+
+        folder_path = Path(os.path.expanduser("~/.visitors"))
+        database = {}
+        raw_profiles = {}
+        cutoff_date = datetime.now() - timedelta(days=365)
+
+        if folder_path.exists():
+            for file_path in folder_path.glob("*.json"):
+                try:
+                    with open(file_path, "r", encoding="utf-8") as file:
+                        content = json.load(file)
+                    ts_str = content.get("time_stamp")
+                    file_date = None
+
+                    if isinstance(ts_str, str):
+                        for fmt in ("%d.%m.%Y", "%d.%m.%Y %H:%M", "%Y-%m-%d"):
+                            try:
+                                file_date = datetime.strptime(ts_str, fmt)
+                                break
+                            except ValueError:
+                                continue
+                    elif isinstance(ts_str, (int, float)):
+                        file_date = datetime.fromtimestamp(ts_str)
+
+                    if file_date is None:
+                        file_date = datetime.fromtimestamp(file_path.stat().st_mtime)
+
+                    if file_date < cutoff_date:
+                        file_path.unlink()
+                        print(f"Abgelaufenes Profil gelöscht: {file_path.name}")
+                        continue
+
+                    raw_profiles[file_path.name] = content
+                    database[file_path.name] = json.dumps(content).lower()
+
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+        def update_results(event=None):
+            query = search_var.get().strip().lower()
+            results_listbox.delete(0, tk.END)
+
+            for filename, text_content in database.items():
+                if not query or query in text_content or query in filename.lower():
+                    results_listbox.insert(tk.END, filename)
+
+        def on_select_profile(event=None):
+            selection = results_listbox.curselection()
+            if not selection:
+                return
+
+            selected_filename = results_listbox.get(selection)
+            profile_dict = raw_profiles[selected_filename]
+            globals()["new_profile"] = Path(selected_filename).stem
+            if "playercount" in profile_dict:
+                globals()["playercount"] = profile_dict["playercount"]
+            for key, value in profile_dict.items():
+                globals()[key] = value
+
+            for G in range(1, globals().get("playercount") + 1):
+                globals()[f"player_{G}_artillery"] = "Classic"
+
+            whichprofile.destroy()
+            load_GUI_2()
+
+        search_var = tk.StringVar()
+        search_entry = tk.Entry(whichprofile, textvariable=search_var, font=("Arial", 12), width=40)
+        search_entry.pack(pady=5, padx=10)
+        search_entry.focus()
+        search_entry.bind("<KeyRelease>", update_results)
+        results_listbox = tk.Listbox(whichprofile, font=("Arial", 11), width=50, height=15)
+        results_listbox.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+        results_listbox.bind("<Double-Button-1>", on_select_profile)
+        results_listbox.bind("<Return>", on_select_profile)
+        update_results()
+
+    def save():
+        r.flushall()
+        os.makedirs(os.path.dirname(JSON_FILE), exist_ok=True)
+        with open(JSON_FILE, "w", encoding="utf-8") as file:
+            json.dump({
+                "ff_penalty": globals().get("ff_penalty"),
+                "hit_points": globals().get("hit_points"),
+                "hit_penalty": globals().get("hit_penalty"),
+                "invincibility_frames_1": globals().get("invincibility_frames_1"),
+                "invincibility_frames_2": globals().get("invincibility_frames_2"),
+                "invincibility_frames_3": globals().get("invincibility_frames_3"),
+                "playtime": globals().get("playtime"),
+                "lifes": globals().get("lifes"),
+                "HP": globals().get("HP"),
+                "team_how": globals().get("team_how"),
+                "hardware_random": globals().get("hardware_random"),
+                "Minigun_damage": globals().get("Minigun_damage"),
+                "Minigun_cooldown": globals().get("Minigun_cooldown"),
+                "Minigun_chance_to_miss": globals().get("Minigun_chance_to_miss"),
+                "Classic_damage": globals().get("Classic_damage"),
+                "Classic_cooldown": globals().get("Classic_cooldown"),
+                "Classic_chance_to_miss": globals().get("Classic_chance_to_miss"),
+                "Big_Gun_damage": globals().get("Big_Gun_damage"),
+                "Big_Gun_cooldown": globals().get("Big_Gun_cooldown"),
+                "Big_Gun_chance_to_miss": globals().get("Big_Gun_chance_to_miss"),
+                "death_penalty": globals()["death_penalty"]
+            }, file, indent=4)
+
+        if globals().get("shut_up") == "true":
+            sys.exit()
+        else:
+            root.destroy()
+            return
+
+    globals()["ff_penalty"] = -1.0
+    globals()["hit_points"] = 1.0
+    globals()["hit_penalty"] = -0.0
+    globals()["invincibility_frames_1"] = 2.0
+    globals()["invincibility_frames_2"] = 5.0
+    globals()["invincibility_frames_3"] = 0.0
+    globals()["playtime"] =900
+    globals()["lifes"] = 10
+    globals()["HP"] = 100
+    globals()["team_how"] = "dependant"
+    globals()["all_guns_equal"] = "yes"
+    globals()["all_sensors_equal"] = "yes"
+    globals()["hardware_count"] = 10
+    globals()["already_scrambled"] = "no"
+    globals()["hardware_random"] = "no"
+    globals()["life_model"] = "1"
+    globals()["Minigun_damage"] = 5
+    globals()["Minigun_cooldown"] = 0.1
+    globals()["Minigun_chance_to_miss"] = 0.10
+    globals()["Classic_damage"] = 10
+    globals()["Classic_cooldown"] = 0.5
+    globals()["Classic_chance_to_miss"] = 0
+    globals()["Big_Gun_damage"] = 20
+    globals()["Big_Gun_cooldown"] = 2.0
+    globals()["Big_Gun_chance_to_miss"] = 0
+    globals()["death_penalty"] = 0
+
+    globals()["playercount"] = 2
+    globals()["game_mode"] = 0
+    globals()["current_GUI"] = 1
+    globals()["Equipment_in_use"] = set()
+    globals()["Already_set_teams"] = set()
+    globals()["sorted_players"] = set()
+
+
+    if os.path.exists(JSON_FILE):
+        try:
+            with open(JSON_FILE, "r", encoding="utf-8") as file:
+                parameters = json.load(file)
+
+                globals()["ff_penalty"] = parameters.get("ff_penalty")
+                globals()["hit_points"] = parameters.get("hit_points")
+                globals()["hit_penalty"] = parameters.get("hit_penalty")
+                globals()["invincibility_frames_1"] = parameters.get("invincibility_frames_1")
+                globals()["invincibility_frames_2"] = parameters.get("invincibility_frames_2")
+                globals()["invincibility_frames_3"] = parameters.get("invincibility_frames_3")
+                globals()["playtime"] = parameters.get("playtime")
+                globals()["lifes"] = parameters.get("lifes")
+                globals()["HP"] = parameters.get("HP")
+                globals()["team_how"] = parameters.get("team_how")
+                globals()["hardware_random"] = parameters.get("hardware_random")
+                globals()["Minigun_damage"] = parameters.get("Minigun_damage")
+                globals()["Minigun_cooldown"] = parameters.get("Minigun_cooldown")
+                globals()["Minigun_chance_to_miss"] = parameters.get("Minigun_chance_to_miss")
+                globals()["Classic_damage"] = parameters.get("Classic_damage")
+                globals()["Classic_cooldown"] = parameters.get("Classic_cooldown")
+                globals()["Classic_chance_to_miss"] = parameters.get("Classic_chance_to_miss")
+                globals()["Big_Gun_damage"] = parameters.get("Big_Gun_damage")
+                globals()["Big_Gun_cooldown"] = parameters.get("Big_Gun_cooldown")
+                globals()["Big_Gun_chance_to_miss"] = parameters.get("Big_Gun_chance_to_miss")
+                globals()["death_penalty"] = parameters.get("death_penalty")
+        except json.JSONDecodeError:
+            pass
+
+    if globals().get("all_guns_equal") == "no":
+        globals()["gun_1_name"] = "BG1"
+        globals()["gun_2_name"] = "BG2"
+        globals()["gun_3_name"] = "BG3"
+        globals()["gun_4_name"] = "NG1"
+        globals()["gun_5_name"] = "NG2"
+        globals()["gun_6_name"] = "NG3"
+        globals()["gun_7_name"] = "NG4"
+        globals()["gun_8_name"] = "SG1"
+        globals()["gun_9_name"] = "SG2"
+        globals()["gun_10_name"] = "SG3"
+
+    elif globals().get("all_guns_equal") == "yes":
+        for R in range(1, globals().get("hardware_count") + 1):
+            globals()[f"gun_{R}_name"] = f"{R}"
+
+    if globals().get("all_sensors_equal") == "no":
+        globals()["sensor_1_name"] = "BS1"
+        globals()["sensor_2_name"] = "BS2"
+        globals()["sensor_3_name"] = "BS3"
+        globals()["sensor_4_name"] = "NS1"
+        globals()["sensor_5_name"] = "NS2"
+        globals()["sensor_6_name"] = "NS3"
+        globals()["sensor_7_name"] = "NS4"
+        globals()["sensor_8_name"] = "SS1"
+        globals()["sensor_9_name"] = "SS2"
+        globals()["sensor_10_name"] = "SS3"
+
+    elif globals().get("all_sensors_equal") == "yes":
+        for a in range(1, globals().get("hardware_count") + 1):
+            globals()[f"sensor_{a}_name"] = f"{a}"
+
+    def load_GUN_settings():
+        canvas.delete("all")
+        root.title("GUN SETTINGS")
+        globals()["current_GUI"] = "GUN_SETTINGS"
+
+       
+        canvas.create_rectangle(1000, 100, 1900, 200, fill="", outline="black", width=5)
+        canvas.create_text(1450, 150, text=f"Set to Default", fill="black", font=("Arial", 30, "bold"), anchor="center")
+
+        canvas.create_rectangle(100, 200, 1900, 250, fill="", outline="black", width=5)
+        canvas.create_text(110, 225, text=f"Classic Damage = {globals().get('Classic_damage')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 250, 1900, 300, fill="", outline="black", width=5)
+        canvas.create_text(110, 275, text=f"Classic Cooldown (s) = {globals().get('Classic_cooldown')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 300, 1900, 350, fill="", outline="black", width=5)
+        canvas.create_text(110, 325, text=f"Classic Chance to Miss = {globals().get('Classic_chance_to_miss')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 350, 1900, 400, fill="", outline="black", width=5)
+        canvas.create_text(110, 375, text=f"Minigun Damage = {globals().get('Minigun_damage')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 400, 1900, 450, fill="", outline="black", width=5)
+        canvas.create_text(110, 425, text=f"Minigun Cooldown (s) = {globals().get('Minigun_cooldown')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 450, 1900, 500, fill="", outline="black", width=5)
+        canvas.create_text(110, 475, text=f"Minigun Chance to Miss = {globals().get('Minigun_chance_to_miss')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 500, 1900, 550, fill="", outline="black", width=5)
+        canvas.create_text(110, 525, text=f"Big Gun Damage = {globals().get('Big_Gun_damage')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 550, 1900, 600, fill="", outline="black", width=5)
+        canvas.create_text(110, 575, text=f"Big Gun Cooldown (s) = {globals().get('Big_Gun_cooldown')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 600, 1900, 650, fill="", outline="black", width=5)
+        canvas.create_text(110, 625, text=f"Big Gun Chance to Miss = {globals().get('Big_Gun_chance_to_miss')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 650, 1900, 700, fill="", outline="black", width=5)
+        canvas.create_text(110, 675, text="Exit Gun Settings", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+    def check_all():
+        yes = "yes"
+        for d in range(1, globals().get("playercount") + 1):
+            if f"player_name_{d}" not in globals() or f"player_{d}_Equipment" not in globals() or f"colour_{d}" not in globals() or f"team_name_alt_{d}" not in globals():
+                messagebox.showwarning("Table incomplete", "The table is incomplete. Please finish the table", parent=root)
+                yes = "no"
+                break
+
+        if yes == "yes":
+            r.flushall()
+            r.set("data_in", "true")
+            r.set("game_mode", globals().get("game_mode"))
+            r.set("ff_penalty", globals().get("ff_penalty"))
+            r.set("hit_points", globals().get("hit_points"))
+            r.set("hit_penalty", globals().get("hit_penalty"))
+            r.set("invincibility_frames_1", globals().get("invincibility_frames_1"))
+            r.set("invincibility_frames_2", globals().get("invincibility_frames_2"))
+            r.set("invincibility_frames_3", globals().get("invincibility_frames_3"))
+            r.set("Playercount", globals().get("playercount"))
+            r.set("Minigun_damage", globals().get("Minigun_damage"))
+            r.set("Minigun_cooldown", globals().get("Minigun_cooldown"))
+            r.set("Minigun_chance_to_miss", globals().get("Minigun_chance_to_miss"))
+            if globals().get("life_model") == "2":
+                r.set("Classic_damage", globals().get("Classic_damage"))
+                r.set("Classic_chance_to_miss", globals().get("Classic_chance_to_miss"))
+            elif globals().get("life_model") == "1":
+                r.set("Classic_damage", 1)
+                r.set("Classic_chance_to_miss", 0)
+            r.set("Classic_cooldown", globals().get("Classic_cooldown"))
+            r.set("Big_Gun_damage", globals().get("Big_Gun_damage"))
+            r.set("Big_Gun_cooldown", globals().get("Big_Gun_cooldown"))
+            r.set("Big_Gun_chance_to_miss", globals().get("Big_Gun_chance_to_miss"))
+            r.set("life_model", globals().get("life_model"))
+            r.set("death_penalty", globals().get("death_penalty"))
+            load_wait()
+            for i in range(1, globals().get("playercount") + 1):
+                r.set(f"player_{i}_gothits", 0)
+                r.set(f"player_{i}_ffires", 0)
+                r.set(f"player_{i}_shots", 0)
+                r.hset(f"player_{i}", f"player_{i}_team_counter", globals().get(f"team_name_alt_{i}") + "_team_counter")
+                r.hset(f"player_{i}", f"player_{i}_counter", globals().get(f"player_name_{i}") + "_counter")
+                r.set(str(globals().get(f"team_name_alt_{i}") + "_team_counter"), 0, nx=True)
+                r.set(str(globals().get(f"player_name_{i}") + "_counter"), 0)
+                if globals().get("life_model") == "1":
+                    r.set(f"Lifes_{i}", globals().get("lifes"))
+                elif globals().get("life_model") == "2":
+                    r.set(f"Lifes_{i}", globals().get("HP"))
+                r.set(f"Kills_{i}", 0)
+                r.set(f"player_{i}_artillery", globals().get(f"player_{i}_artillery"))
+            for I in range(1, globals().get("hardware_count") + 1):
+                if globals().get(f"gun_{I}_name") + "_gun_owner" in globals():
+                    if globals().get(globals().get(f"gun_{I}_name") + "_gun_owner") != None:
+                        r.set(globals().get(f"gun_{I}_name") + "_gun_owner", globals().get(globals().get(f"gun_{I}_name") + "_gun_owner"))
+                if globals().get(f"sensor_{I}_name") + "_owner" in globals():
+                    if globals().get(globals().get(f"sensor_{I}_name") + "_owner") != None:
+                        r.set(globals().get(f"sensor_{I}_name") + "_owner", globals().get(globals().get(f"sensor_{I}_name") + "_owner"))
+            r.set("data_in", "true")
+        else:
+            yes = "yes"
+
+    def load_gun_model_picker():
+        globals()["life_model"] = "2"
+        gq = globals().get("mode_target")
+
+        gun = globals().get("mode_target")
+        whichartillery = tk.Toplevel(root)
+        whichartillery.title(f"Select artillery")
+        whichartillery.geometry(f"300x250")
+        
+        whichartillery.transient(root)
+        label = tk.Label(whichartillery, text="Pick your Equipment:", font=("Arial", 16, "bold"))
+        label.pack(pady=10)
+
+        artillery_canvas = tk.Canvas(whichartillery, width=210, height=160)
+        artillery_canvas.pack()
+
+        if globals().get(f"player_{gq}_artillery") == "Classic":
+            equipped_1 = ""
+            equipped_2 = "white"
+            equipped_3 = "white"
+        if globals().get(f"player_{gq}_artillery") == "Minigun":
+            equipped_1 = "white"
+            equipped_2 = ""
+            equipped_3 = "white"
+        if globals().get(f"player_{gq}_artillery") == "Big_Gun":
+            equipped_1 = "white"
+            equipped_2 = "white"
+            equipped_3 = ""
+
+        artillery_canvas.create_rectangle(5, 5, 205, 55, fill=equipped_1, outline="black", width=globals().get("uni_width"))
+        artillery_canvas.create_rectangle(5, 55, 205, 105, fill=equipped_2, outline="black", width=globals().get("uni_width"))
+        artillery_canvas.create_rectangle(5, 105, 205, 155, fill=equipped_3, outline="black", width=globals().get("uni_width"))
+        artillery_canvas.create_text(105, 30, text="Classic", fill="black", font=("Arial", 30, "bold"), anchor='center')
+        artillery_canvas.create_text(105, 80, text="Minigun", fill="black", font=("Arial", 30, "bold"), anchor='center')
+        artillery_canvas.create_text(105, 130, text="Big Gun", fill="black", font=("Arial", 30, "bold"), anchor='center')
+
+        def navigate_gun_model_picker(event):
+            gimpx = event.x
+            gimpy = event.y
+
+            if 5 <= gimpx <= 205:
+                if 5 <= gimpy <= 55:
+                    globals()[f"player_{gq}_artillery"] = "Classic"
+                    whichartillery.destroy()
+                    load_GUI_2()
+                if 55 <= gimpy <= 105:
+                    globals()[f"player_{gq}_artillery"] = "Minigun"
+                    whichartillery.destroy()
+                    load_GUI_2()
+                if 105 <= gimpy <= 155:
+                    globals()[f"player_{gq}_artillery"] = "Big_Gun"
+                    whichartillery.destroy()
+                    load_GUI_2()
+
+        artillery_canvas.bind('<Button-1>', navigate_gun_model_picker)
+
+    def load_wait():
+        canvas.delete("all")
+        root.title("System Ready")
+        globals()["current_GUI"] = "wait"
+        canvas.create_rectangle(660, 340, 1260, 740, fill="red", outline="black", width=5)
+        globals()["idiots"] = set()
+
+    def load_Equipmentpicker():
+        eq = globals().get("Equipment_player")
+        whichEquipment = tk.Toplevel(root)
+        whichEquipment.title(f"Select Equipment")
+        E_width = globals().get("hardware_count") * globals().get("t_size")
+        whichEquipment.geometry(f"300x{int(round(E_width + 100))}")
+        
+        whichEquipment.transient(root)
+        
+        label = tk.Label(whichEquipment, text="Pick your Equipment:", font=("Arial", 16, "bold"))
+        label.pack(pady=10)
+
+        Equipmentpicker_sub_canvas = tk.Canvas(whichEquipment, width=210, height=E_width + globals().get("uni_width"), bg="white")
+        Equipmentpicker_sub_canvas.pack()
+
+        for w in range(globals().get("hardware_count")):
+            Equipmentpicker_sub_canvas.create_rectangle(5, 5 + w * globals().get("t_size"), 205, 5 + w * globals().get("t_size") + globals().get("t_size"), fill="", outline="black", width=globals().get("uni_width"))
+            Equipmentpicker_sub_canvas.create_text(105, 5 + w * globals().get("t_size") + globals().get("t_size") / 2, text=globals().get(f"gun_{w + 1}_name") + "+" + globals().get(f"sensor_{w + 1}_name"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            if w+1 in globals().get("Equipment_in_use"):
+                Equipmentpicker_sub_canvas.create_line(5, 5 + w * globals().get("t_size"), 205, 5 + w * globals().get("t_size") + globals().get("t_size"), width=globals().get("uni_width"), fill="black")
+
+        def navigate_Equipmentpicker_sub_canvas(event):
+            tx = event.x
+            ty = event.y
+            
+            my_Equipment = None
+            if 5 <= tx <= 205:
+                for j in range(globals().get("hardware_count")):
+                    if not (5 + j * globals().get("t_size") <= ty <= 5 + j * globals().get("t_size") + globals().get("t_size")) and globals().get(f"player_{eq}_Equipment") == globals().get(f"gun_{j + 1}_name") + "+" + globals().get(f"sensor_{j + 1}_name"):
+                        globals().get("Equipment_in_use").discard(j+1)
+                        globals()[globals().get(f"gun_{j + 1}_name") + "_gun_owner"] = None
+                        globals()[globals().get(f"sensor_{j + 1}_name") + "_owner"] = None
+                    if 5 + j * globals().get("t_size") <= ty <= 5 + j * globals().get("t_size") + globals().get("t_size") and j+1 not in globals()["Equipment_in_use"]:
+                        my_Equipment = globals().get(f"gun_{j + 1}_name") + "+" + globals().get(f"sensor_{j + 1}_name")
+                        globals()[globals().get(f"gun_{j + 1}_name") + "_gun_owner"] = eq
+                        globals()[globals().get(f"sensor_{j + 1}_name") + "_owner"] = eq
+                        globals().get("Equipment_in_use").add(j+1)
+
+                if my_Equipment is not None:
+                    globals()[f"player_{eq}_Equipment"] = my_Equipment
+                    del my_Equipment  
+                    whichEquipment.destroy()
+                    load_GUI_2()
+        Equipmentpicker_sub_canvas.bind('<Button-1>', navigate_Equipmentpicker_sub_canvas)
+
+    def load_controller():
+        canvas.delete("all")
+        root.title("Player Initialisation")
+        canvas.create_rectangle(0, 0, 960, 1080, fill="green", width="5")
+        canvas.create_rectangle(960, 0, 1920, 1080, fill="red", width="5")
+        canvas.create_text(480, 540, text="Create New Profile", fill="black", font=("Arial", 40, "bold"), anchor="center")
+        canvas.create_text(480+960, 540, text="Load Existing Profile", fill="black", font=("Arial", 40, "bold"), anchor="center")
+        canvas.create_rectangle(0, 0, 50, 50, fill="black", outline="black", width=5)
+        globals()["current_GUI"] = "controller"
+
+    def load_GUI_2():
+        #global bg_image
+        canvas.delete("all")
+        root.title("Player Initialisation")
+        globals()["current_GUI"] = 2
+
+        #picture = Image.open("Background.jpeg").resize((1920, 1080))
+        #bg_image = ImageTk.PhotoImage(picture)
+        #canvas.create_image(0, 0, anchor="nw", image=bg_image)
+
+        if globals().get("playercount") < 17:
+            globals()["t_size"] = 50
+            globals()["uni_width"] = 5
+            globals()["font_size"] = 30
+            
+        elif globals().get("playercount") > 16:
+            globals()["t_size"] = 800 / globals().get("playercount")
+            globals()["uni_width"] = 4
+            globals()["font_size"] = int(globals()["t_size"] * 0.6)
+
+        playertable = 200 + globals().get("playercount") * globals().get("t_size")
+
+        canvas.create_rectangle(0, 0, 50, 50, fill="black", outline="black", width=5)
+        canvas.create_rectangle(850, 150, 1150, 200, fill="white", outline="black", width=globals().get("uni_width"))
+        canvas.create_text(1000, 175, text="Team colour", fill="black", font=("Arial", 30, "bold"), anchor="center")
+        canvas.create_rectangle(1150, 150, 1620, 200, fill="white", outline="black", width=globals().get("uni_width"))
+        canvas.create_text(1385, 175, text="Team name", fill="black", font=("Arial", 30, "bold"), anchor="center")
+        canvas.create_rectangle(650, 150, 850, 200, fill="white", outline="black", width=globals().get("uni_width"))
+        canvas.create_text(750, 175, text="Equipped", fill="black", font=("Arial", 30, "bold"), anchor="center")
+        canvas.create_rectangle(200, 150, 650, 200, fill="white", outline="black", width=globals().get("uni_width"))
+        canvas.create_text(425, 175, text="Name", fill="black", font=("Arial", 30, "bold"), anchor="center")
+        canvas.create_rectangle(200, 200, 1620, playertable, fill="white", outline="black", width=globals().get("uni_width"))
+        canvas.create_rectangle(1400, 5, 1900, 100, fill="", outline="black", width=5)
+        canvas.create_text(1650, 50, text="SETTINGS", fill="black", font=("Arial", 40, "bold"))
+        canvas.create_rectangle(850, 200, 900, playertable, fill="red", outline="black", width=globals().get("uni_width"))
+        canvas.create_rectangle(900, 200, 950, playertable, fill="green", outline="black", width=globals().get("uni_width"))
+        canvas.create_rectangle(950, 200, 1000, playertable, fill="blue", outline="black", width=globals().get("uni_width"))
+        canvas.create_rectangle(1000, 200, 1050, playertable, fill="orange", outline="black", width=globals().get("uni_width"))
+        canvas.create_rectangle(1050, 200, 1100, playertable, fill="yellow", outline="black", width=globals().get("uni_width"))
+        canvas.create_line(1150, 200, 1150, playertable, width=globals().get("uni_width"), fill="black")
+        canvas.create_line(650, 150, 650, playertable, width=globals().get("uni_width"), fill="black")
+        canvas.create_rectangle(1650, 950, 1900, 1000, fill="red", outline="black", width=5)
+        canvas.create_text(1720, 975, text="Launch", fill="black", font=("Arial", 25, "bold"), anchor="w")
+
+        for q in range (1, globals().get("playercount") + 1):
+            if globals().get("team_how") == "independant" and f"colour_{q}" in globals() and f"team_name_alt_{q}" in globals():
+                globals()[globals().get(f"colour_{q}")] = globals().get(f"team_name_alt_{q}")
+            if globals().get("team_how") == "dependant" and f"colour_{q}" in globals():
+                if globals().get(f"colour_{q}") in globals():
+                    globals()[f"team_name_alt_{q}"] = globals()[globals().get(f"colour_{q}")]
+            if f"colour_{q}" in globals() and globals().get("team_how") == "dependant":
+                canvas.create_text(1385, 200 + globals().get("t_size") / 2 + (q - 1) * globals().get("t_size"), text=globals().get(globals().get(f"colour_{q}")), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            if f"team_name_alt_{q}" in globals() and globals().get("team_how") == "independant":
+                canvas.create_text(1385, 200 + globals().get("t_size") / 2 + (q - 1) * globals().get("t_size"), text=globals().get(f"team_name_alt_{q}"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            if f"player_name_{q}" in globals():
+                canvas.create_text(425, 200 + globals().get("t_size") / 2 + (q - 1) * globals().get("t_size"), text=globals().get(f"player_name_{q}"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            if globals().get("hardware_random") == "no":
+                if f"player_{q}_Equipment" in globals():
+                    canvas.create_text(750, 200 + globals().get("t_size") / 2 + (q - 1) * globals().get("t_size"), text=globals().get(f"player_{q}_Equipment"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            if globals().get("hardware_random") == "yes":
+                if globals().get("already_scrambled") == "no":
+                    start = 1
+                    end = globals().get("hardware_count")
+                    number_pool = list(range(start, end + 1))
+                    random.shuffle(number_pool)
+                    counter_r = 1
+                    globals().get("Equipment_in_use").clear()
+
+                    while number_pool:
+                        next_number = str(number_pool.pop())
+                        globals()[f"player_{counter_r}_Equipment"] = globals().get(f"gun_{next_number}_name") + "+" + globals().get(f"sensor_{next_number}_name")
+                        globals().get("Equipment_in_use").add(int(next_number))
+                        counter_r = counter_r + 1
+                        if counter_r == globals().get("playercount") + 1:
+                            break
+                    globals()["already_scrambled"] = "yes"
+
+                canvas.create_text(750, 200 + globals().get("t_size") / 2 + (q - 1) * globals().get("t_size"), text=globals().get(f"player_{q}_Equipment"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            if globals().get(f"player_{q}_artillery") != "Classic" and globals().get("game_mode") == 1:
+                canvas.create_text(830, 200 + globals().get("t_size") / 2 + (q - 1) * globals().get("t_size"), text="*", fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="w")
+
+        for p in range(globals().get("playercount")):
+            canvas.create_line(200, 200 + p * globals().get("t_size"), 1620, 200 + p * globals().get("t_size"), width=globals().get("uni_width"), fill="black")
+            canvas.create_text(1125, 200 + globals().get("t_size") / 2 + p * globals().get("t_size"), text=">", fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            if f"extra_colour_{p + 1}" in globals():
+                if globals().get(f"colour_{p + 1}") == globals().get(f"extra_colour_{p + 1}"):
+                    canvas.create_rectangle(1100, 200 + p * globals().get("t_size"), 1150, 200 + p * globals().get("t_size") + globals().get("t_size"), width=globals().get("uni_width"), fill=globals().get(f"extra_colour_{p + 1}")) 
+            if f"which_h_{p + 1}?" in globals() and f"which_v_{p + 1}?" in globals():
+                canvas.create_text(globals().get(f"which_h_{p + 1}?"), globals().get(f"which_v_{p + 1}?"), text="X", fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+
+    def open_more_colours():
+        b = globals().get("u")
+        more_colours = tk.Toplevel(root)
+        more_colours.title(f"Select the team's colour")
+        more_colours.geometry("320x115")
+        
+        more_colours.transient(root)
+        
+        label = tk.Label(more_colours, text="Pick a colour:", font=("Arial", 16, "bold"))
+        label.pack(pady=10)
+
+        sub_canvas = tk.Canvas(more_colours, width=310, height=60, bg="white")
+        sub_canvas.pack()
+
+        sub_canvas.create_rectangle(5, 5, 55, 55, fill="purple", outline="black", width=globals().get("uni_width"))
+        sub_canvas.create_rectangle(55, 5, 105, 55, fill="firebrick", outline="black", width=globals().get("uni_width"))
+        sub_canvas.create_rectangle(105, 5, 155, 55, fill="forest green", outline="black", width=globals().get("uni_width"))
+        sub_canvas.create_rectangle(155, 5, 205, 55, fill="royal blue", outline="black", width=globals().get("uni_width"))
+        sub_canvas.create_rectangle(205, 5, 255, 55, fill="tomato", outline="black", width=globals().get("uni_width"))
+        sub_canvas.create_rectangle(255, 5, 305, 55, fill="gold", outline="black", width=globals().get("uni_width"))
+
+        if f"h_pos_" + f"{b}" in globals():
+            sub_canvas.create_text(globals().get(f"h_pos_" + f"{b}"), 30, text="X", fill="black", font=("Arial", 30, "bold"), anchor="center")
+
+        def navigate_sub_canvas(event):
+            sx = event.x
+            sy = event.y
+
+            if 5 <= sy <= 55:
+                if 5 <= sx <= 55:
+                    other_colour_picked = "purple"
+                    globals()[f"h_pos_{b}"] = 30
+                elif 55 <= sx <= 105:
+                    other_colour_picked = "firebrick"
+                    globals()[f"h_pos_{b}"] = 80
+                elif 105 <= sx <= 155:
+                    other_colour_picked = "forest green"
+                    globals()[f"h_pos_{b}"] = 130
+                elif 155 <= sx <= 205:
+                    other_colour_picked = "royal blue"
+                    globals()[f"h_pos_{b}"] = 180
+                elif 205 <= sx <= 255:
+                    other_colour_picked = "tomato"
+                    globals()[f"h_pos_{b}"] = 230
+                elif 255 <= sx <= 305:
+                    other_colour_picked = "gold"
+                    globals()[f"h_pos_{b}"] = 280
+
+                if other_colour_picked is not None:
+                    globals()[f"colour_{b}"] = other_colour_picked    
+                    globals()[f"extra_colour_{b}"] = other_colour_picked            
+                    more_colours.destroy()
+                    load_GUI_2()
+
+        sub_canvas.bind('<Button-1>', navigate_sub_canvas)
+
+    def load_SETTINGS():
+        #global bg_image
+        canvas.delete("all")
+        root.title("SETTINGS")
+        globals()["current_GUI"] = "SETTINGS"
+
+        #picture = Image.open("Background.jpeg").resize((1920, 1080))
+        #bg_image = ImageTk.PhotoImage(picture)
+        #canvas.create_image(0, 0, anchor="nw", image=bg_image)
+        
+        canvas.create_rectangle(1000, 100, 1900, 200, fill="", outline="black", width=5)
+        canvas.create_text(1450, 150, text=f"Set to Default", fill="black", font=("Arial", 30, "bold"), anchor="center")
+
+        canvas.create_rectangle(100, 200, 1900, 250, fill="", outline="black", width=5)
+        canvas.create_text(110, 225, text=f"Playtime (s) = {globals().get('playtime')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+        
+        canvas.create_rectangle(100, 250, 1900, 300, fill="", outline="black", width=5)
+        if globals().get("life_model") == "1":
+            canvas.create_text(110, 275, text=f"Lifes = {globals().get('lifes')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        elif globals().get("life_model") == "2":
+            canvas.create_text(110, 275, text=f"Health = {globals().get('HP')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+        
+        canvas.create_rectangle(100, 300, 1900, 350, fill="", outline="black", width=5)
+        canvas.create_text(110, 325, text=f"Points for hit = {globals().get('hit_points')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+        
+        canvas.create_rectangle(100, 350, 1900, 400, fill="", outline="black", width=5)
+        canvas.create_text(110, 375, text=f"Friendly Fire Penalty = {globals().get('ff_penalty')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+        
+        canvas.create_rectangle(100, 400, 1900, 450, fill="", outline="black", width=5)
+        canvas.create_text(110, 425, text=f"Getting hit penalty = {globals().get('hit_penalty')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+        
+        canvas.create_rectangle(100, 450, 1900, 500, fill="", outline="black", width=5)
+        canvas.create_text(110, 475, text=f"Invincibility frames (Steelsoul) = {globals().get('invincibility_frames_1')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 500, 1900, 550, fill="", outline="black", width=5)
+        canvas.create_text(110, 525, text=f"Invincibility frames (Guns) = {globals().get('invincibility_frames_3')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+        
+        canvas.create_rectangle(100, 550, 1900, 600, fill="", outline="black", width=5)
+        canvas.create_text(110, 575, text=f"Invincibility frames (Classic) = {globals().get('invincibility_frames_2')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 600, 1900, 650, fill="", outline="black", width=5)
+        canvas.create_text(110, 625, text=f"Players = {globals().get('playercount')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 650, 1900, 700, fill="", outline="black", width=5)
+        canvas.create_text(110, 675, text=f"Teams and Colours = {globals().get('team_how')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 700, 1900, 750, fill="", outline="black", width=5)
+        canvas.create_text(110, 725, text=f"randomiser on = {globals().get('hardware_random')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 750, 1900, 800, fill="", outline="black", width=5)
+        canvas.create_text(110, 775, text=f"death penalty = {globals().get('death_penalty')}", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+        canvas.create_rectangle(100, 800, 1900, 850, fill="", outline="black", width=5)
+        canvas.create_text(110, 825, text="Gun Settings", fill="black", font=("Arial", 30, "bold"), anchor="w")
+        
+        canvas.create_rectangle(100, 850, 1900, 900, fill="", outline="black", width=5)
+        canvas.create_text(110, 875, text="Exit Settings", fill="black", font=("Arial", 30, "bold"), anchor="w")
+
+    def navigate_config(event):
+        x = event.x
+        y = event.y
+
+        if globals().get("current_GUI") == 1:
+            if 0 <= x <= 960 and 0 <= y <= 1080:
+                globals()["game_mode"] = 1
+                if globals().get("shut_up") == "extend":
+                    del globals()["shut_up"]
+                    load_GUI_2()
+                else:
+                    load_controller()
+            elif 960 <= x <= 1920 and 0 <= y <= 1080:
+                globals()["game_mode"] = 2
+                if globals().get("shut_up") == "extend":
+                    del globals()["shut_up"]
+                    load_GUI_2()
+                else:
+                    load_controller()
+
+        elif globals().get("current_GUI") == "controller":
+
+            if 0 <= x <= 960 and 50 <= y <= 1080 or 50 <= x <= 960:
+                Profile_name = simpledialog.askstring("New Profile", "Please enter:", parent=root)
+                if Profile_name is not None and Profile_name != "":
+                    globals()["new_profile"] = Profile_name
+                    globals()["do_not_save"] = "False"
+                elif Profile_name == None or Profile_name == "":
+                    globals()["do_not_save"] = "True"
+                Playercount = simpledialog.askinteger("Initialise Players", "Please enter:", parent=root)
+                if Playercount is not None and Playercount != 1:
+                    globals()["playercount"] = Playercount
+                    if Playercount > globals().get("hardware_count"):
+                        messagebox.showwarning("Hardware missing", "You have more players than hardware. If this is not true, include the missing hardware into this script", parent=root)
+                    for dn in range(1, globals().get("playercount") + 1):
+                        globals()[f"player_{dn}_artillery"] = "Classic"
+                    load_GUI_2()
+            elif 960 <= x <= 1920:
+                globals()["do_not_save"] = "False"
+                load_profile()
+
+            elif 0 <= x <= 50 and 0 <= y <= 50:
+                globals()["shut_up"] = "true"
+                save()
+
+        elif globals().get("current_GUI") == 2:
+            if 1400 <= x <= 1900 and 5 <= y <= 100:
+                load_SETTINGS()
+            elif 0 <= x <= 50 and 0 <= y <= 50:
+                globals()["shut_up"] = "true"
+                save()
+            elif 200 <= x <= 650:
+                for c in range(globals().get("playercount")):
+                    if 200 + c * globals().get("t_size") <= y <= 200 + globals().get("t_size") + c * globals().get("t_size"):
+                        new_name = simpledialog.askstring("Enter Name", "Please enter new value.", parent=root)
+
+                        if new_name is not None:
+                            globals()[f"player_name_{c + 1}"] = new_name
+                            load_GUI_2()
+                            break
+
+            elif 650 <= x <= 850 and globals().get("hardware_random") == "no":
+                for o in range(globals().get("playercount")):
+                    if 200 + o * globals().get("t_size") <= y <= 200 + globals().get("t_size") + o * globals().get("t_size"):
+                        globals()["Equipment_player"] = o + 1
+                        load_Equipmentpicker()
+                        break
+
+            elif 850 <= x <= 900:
+                for f in range(globals().get("playercount")):
+                    if 200 + f * globals().get("t_size") <= y <= 200 + globals().get("t_size") + f * globals().get("t_size"):
+                        globals()[f"colour_{f+ 1}"] = "red"
+                        globals()[f"which_h_{f+ 1}?"] = 875
+                        globals()[f"which_v_{f+ 1}?"] = 200 + f * globals().get("t_size") + globals().get("t_size") / 2
+                        load_GUI_2()
+                        break
+
+            elif 900 <= x <= 950:
+                for g in range(globals().get("playercount")):
+                    if 200 + g * globals().get("t_size") <= y <= 200 + globals().get("t_size") + g * globals().get("t_size"):
+                        globals()[f"colour_{g + 1}"] = "green"
+                        globals()[f"which_h_{g+ 1}?"] = 925
+                        globals()[f"which_v_{g+ 1}?"] = 200 + g * globals().get("t_size") + globals().get("t_size") / 2
+                        load_GUI_2()
+                        break
+
+            elif 950 <= x <= 1000:
+                for h in range(globals().get("playercount")):
+                    if 200 + h * globals().get("t_size") <= y <= 200 + globals().get("t_size") + h * globals().get("t_size"):
+                        globals()[f"colour_{h + 1}"] = "blue"
+                        globals()[f"which_h_{h+ 1}?"] = 975
+                        globals()[f"which_v_{h+ 1}?"] = 200 + h * globals().get("t_size") + globals().get("t_size") / 2
+                        load_GUI_2()
+                        break
+
+            elif 1000 <= x <= 1050:
+                for k in range(globals().get("playercount")):
+                    if 200 + k * globals().get("t_size") <= y <= 200 + globals().get("t_size") + k * globals().get("t_size"):
+                        globals()[f"colour_{k + 1}"] = "orange"
+                        globals()[f"which_h_{k+ 1}?"] = 1025
+                        globals()[f"which_v_{k+ 1}?"] = 200 + k * globals().get("t_size") + globals().get("t_size") / 2
+                        load_GUI_2()
+                        break
+
+            elif 1050 <= x <= 1100:
+                for n in range(globals().get("playercount")):
+                    if 200 + n * globals().get("t_size") <= y <= 200 + globals().get("t_size") + n * globals().get("t_size"):
+                        globals()[f"colour_{n + 1}"] = "yellow"
+                        globals()[f"which_h_{n+ 1}?"] = 1075
+                        globals()[f"which_v_{n+ 1}?"] = 200 + n * globals().get("t_size") + globals().get("t_size") / 2
+                        load_GUI_2()
+                        break
+
+            elif 1100 <= x <= 1150:
+                for l in range(globals().get("playercount")):
+                    if 200 + l * globals().get("t_size") <= y <= 200 + globals().get("t_size") + l * globals().get("t_size"):
+                        globals()["u"] = l + 1 
+                        open_more_colours()
+                        globals()[f"which_h_{l+ 1}?"] = 1125
+                        globals()[f"which_v_{l+ 1}?"] = 200 + l * globals().get("t_size") + globals().get("t_size") / 2
+                        load_GUI_2()
+                        break
+
+            elif 1150 <= x <= 1620:
+                for m in range(globals().get("playercount")):
+                    if 200 + m * globals().get("t_size") <= y <= 200 + globals().get("t_size") + m * globals().get("t_size") and f"colour_{m + 1}" in globals() and globals().get("team_how") == "dependant":
+                        new_team_name = simpledialog.askstring("Enter Teamname", "Please enter new value.", parent=root)
+
+                        if new_team_name is not None:
+                            globals()[globals().get(f"colour_{m + 1}")] = new_team_name
+                            globals()[f"team_name_alt_{m + 1}"] = new_team_name
+                            load_GUI_2()
+                            break
+
+                    elif 200 + m * globals().get("t_size") <= y <= 200 + globals().get("t_size") + m * globals().get("t_size") and f"colour_{m + 1}" not in globals() and globals().get("team_how") == "dependant":
+                        messagebox.showinfo("Dumb Issue", "Set colour first or set 'Colour and Teams' to 'independant'!", parent=root)
+                        break
+
+                    elif 200 + m * globals().get("t_size") <= y <= 200 + globals().get("t_size") + m * globals().get("t_size") and globals().get("team_how") == "independant":
+                        new_alt_team_name = simpledialog.askstring("Enter Teamname", "Please enter new value.", parent=root)
+
+                        if new_alt_team_name is not None:
+                            globals()[f"team_name_alt_{m + 1}"] = new_alt_team_name
+                            load_GUI_2()
+                            break
+            elif 1650 <= x <= 1900 and 950 <= y <= 1000:
+                check_all()
+
+        elif globals().get("current_GUI") == "SETTINGS":
+
+            if 110 <= x <= 1900:
+                if 200 <= y <= 250:
+                    new_playtime = simpledialog.askfloat("Change Settings", "Please enter new value.", parent=root)
+                    
+                    if new_playtime is not None:
+                        globals()["playtime"] = new_playtime
+                        load_SETTINGS()
+
+                elif 250 <= y <= 300 and globals().get("life_model") == "1":
+                    new_lifes = simpledialog.askinteger("Change Settings", "Please enter new value.", parent=root)
+                    
+                    if new_lifes is not None:
+                        globals()["lifes"] = new_lifes
+                        load_SETTINGS()
+
+                elif 250 <= y <= 300 and globals().get("life_model") == "2":
+                    new_Health = simpledialog.askinteger("Change Settings", "Please enter new value.", parent=root)
+                    
+                    if new_Health is not None:
+                        globals()["HP"] = new_Health
+                        load_SETTINGS()
+
+                elif 300 <= y <= 350:
+                    new_hit_points = simpledialog.askfloat("Change Settings", "Please enter new value.", parent=root)
+                    
+                    if new_hit_points is not None:
+                        globals()["hit_points"] = new_hit_points
+                        load_SETTINGS()
+
+                elif 350 <= y <= 400:
+                    new_ff_penalty = simpledialog.askfloat("Change Settings", "Please enter new value.", parent=root)
+                    
+                    if new_ff_penalty is not None:
+                        globals()["ff_penalty"] = new_ff_penalty
+                        load_SETTINGS()
+
+                elif 400 <= y <= 450:
+                    new_hit_penalty = simpledialog.askfloat("Change Settings", "Please enter new value.", parent=root)
+                    
+                    if new_hit_penalty is not None:
+                        globals()["hit_penalty"] = new_hit_penalty
+                        load_SETTINGS()
+
+                elif 450 <= y <= 500:
+                    new_invincibility_frames_1 = simpledialog.askfloat("Change Settings", "Please enter new value.", parent=root)
+                    
+                    if new_invincibility_frames_1 is not None:
+                        globals()["invincibility_frames_1"] = new_invincibility_frames_1
+                        load_SETTINGS()
+
+                elif 500 <= y <= 550:
+                    new_invincibility_frames_3 = simpledialog.askfloat("Change Settings", "Please enter new value.", parent=root)
+                    
+                    if new_invincibility_frames_3 is not None:
+                        globals()["invincibility_frames_3"] = new_invincibility_frames_3
+                        load_SETTINGS()
+
+                elif 550 <= y <= 600:
+                    new_invincibility_frames_2 = simpledialog.askfloat("Change Settings", "Please enter new value.", parent=root)
+                    
+                    if new_invincibility_frames_2 is not None:
+                        globals()["invincibility_frames_2"] = new_invincibility_frames_2
+                        load_SETTINGS()
+
+                elif 600 <= y <= 650:
+                    new_playercount = simpledialog.askinteger("Change Settings", "Please enter new value.", parent=root)
+                    
+                    if new_playercount is not None and new_playercount != 0 and new_playercount != 1:
+                        globals()["playercount"] = new_playercount
+                        for dn in range(1, globals().get("playercount") + 1):
+                            if f"player_{dn}_artillery" in globals():
+                                continue
+                            else:
+                                globals()[f"player_{dn}_artillery"] = "Classic"
+                        load_SETTINGS()
+
+                elif 650 <= y <= 700:
+                    if globals().get("team_how") == "independant":
+                        globals()["team_how"] = "dependant"
+                    elif globals().get("team_how") == "dependant":
+                        globals()["team_how"] = "independant"
+                    load_SETTINGS()
+
+                elif 700 <= y <= 750:
+                    if globals().get("hardware_random") == "no":
+                        globals()["already_scrambled"] = "no"
+                        globals()["hardware_random"] = "yes"
+                    elif globals().get("hardware_random") == "yes":
+                        globals()["hardware_random"] = "no"
+                    load_SETTINGS()
+
+                elif 750 <= y <= 800:
+                    new_death_penalty = simpledialog.askfloat("Change Settings", "Please enter new value.", parent=root)
+                    if new_death_penalty is not None:
+                        globals()["death_penalty"] = new_death_penalty
+                        load_SETTINGS()
+
+                elif 800 <= y <= 850:
+                    load_GUN_settings()
+
+                elif 850 <= y <= 900:
+                    load_GUI_2()
+
+            if 1000 <= x <= 1900 and 100 <= y <= 200:
+                if messagebox.askyesno("Reset Settings", "Are you sure you want to reset all settings to default?", parent=root):
+                    globals()["ff_penalty"] = -1.0
+                    globals()["hit_points"] = 1.0
+                    globals()["hit_penalty"] = -0.0
+                    globals()["invincibility_frames_1"] = 2.0
+                    globals()["invincibility_frames_2"] = 5.0
+                    globals()["invincibility_frames_3"] = 0.0
+                    globals()["playtime"] = 900
+                    globals()["lifes"] = 10
+                    globals()["HP"] = 100
+                    globals()["team_how"] = "dependant"
+                    globals()["hardware_random"] = "no"
+                    load_SETTINGS()
+
+
+        elif globals().get("current_GUI") == "GUN_SETTINGS":
+            if 1000 <= x <= 1900 and 100 <= y <= 200:
+                if messagebox.askyesno("Reset Settings", "Are you sure you want to reset all settings to default?", parent=root):
+                    globals()["Minigun_damage"] = 5
+                    globals()["Minigun_cooldown"] = 0.1
+                    globals()["Minigun_chance_to_miss"] = 0.10
+                    globals()["Classic_damage"] = 10
+                    globals()["Classic_cooldown"] = 0.5
+                    globals()["Classic_chance_to_miss"] = 0
+                    globals()["Big_Gun_damage"] = 20
+                    globals()["Big_Gun_cooldown"] = 2.0
+                    globals()["Big_Gun_chance_to_miss"] = 0
+                    load_GUN_settings()
+
+            if 110 <= x <= 1900:
+                if 200 <= y <= 250:
+                    val = simpledialog.askfloat("Change Gun Settings", "Please enter new Classic Damage:", parent=root)
+                    if val is not None:
+                        globals()["Classic_damage"] = val
+                        load_GUN_settings()
+
+                elif 250 <= y <= 300:
+                    val = simpledialog.askfloat("Change Gun Settings", "Please enter new Classic Cooldown:", parent=root)
+                    if val is not None:
+                        globals()["Classic_cooldown"] = val
+                        load_GUN_settings()
+
+                elif 300 <= y <= 350:
+                    val = simpledialog.askfloat("Change Gun Settings", "Please enter new Classic Miss Chance (e.g. 0.1):", parent=root)
+                    if val is not None:
+                        globals()["Classic_chance_to_miss"] = val
+                        load_GUN_settings()
+
+                elif 350 <= y <= 400:
+                    val = simpledialog.askfloat("Change Gun Settings", "Please enter new Minigun Damage:", parent=root)
+                    if val is not None:
+                        globals()["Minigun_damage"] = val
+                        load_GUN_settings()
+
+                elif 400 <= y <= 450:
+                    val = simpledialog.askfloat("Change Gun Settings", "Please enter new Minigun Cooldown:", parent=root)
+                    if val is not None:
+                        globals()["Minigun_cooldown"] = val
+                        load_GUN_settings()
+
+                elif 450 <= y <= 500:
+                    val = simpledialog.askfloat("Change Gun Settings", "Please enter new Minigun Miss Chance (e.g. 0.1):", parent=root)
+                    if val is not None:
+                        globals()["Minigun_chance_to_miss"] = val
+                        load_GUN_settings()
+
+                elif 500 <= y <= 550:
+                    val = simpledialog.askfloat("Change Gun Settings", "Please enter new Big Gun Damage:", parent=root)
+                    if val is not None:
+                        globals()["Big_Gun_damage"] = val
+                        load_GUN_settings()
+
+                elif 550 <= y <= 600:
+                    val = simpledialog.askfloat("Change Gun Settings", "Please enter new Big Gun Cooldown:", parent=root)
+                    if val is not None:
+                        globals()["Big_Gun_cooldown"] = val
+                        load_GUN_settings()
+
+                elif 600 <= y <= 650:
+                    val = simpledialog.askfloat("Change Gun Settings", "Please enter new Big Gun Miss Chance (e.g. 0.1):", parent=root)
+                    if val is not None:
+                        globals()["Big_Gun_chance_to_miss"] = val
+                        load_GUN_settings()
+
+                elif 650 <= y <= 700:
+                    load_SETTINGS()
+
+        elif globals().get("current_GUI") == "wait":
+            if 660 <= x <= 1260 and 340 <= y <= 740:
+                r.set("game_active", "true")
+                if globals().get("do_not_save") == "False":
+                    profile_name = globals().get("new_profile")
+                    create_profile(profile_name)
+                game_running()
+
+        elif globals().get("current_GUI") == "active":
+            if 0 <= x <= 50 and 0 <= y <= 50:
+                globals()["game_end_time"] = 0
+
+        elif globals().get("current_GUI") == "results":
+            if 0 <= x <= 50 and 0 <= y <= 50:
+                globals()["shut_up"] = "true"
+                save()
+            elif 1400 <= x <= 1650 and 5 <= y <= 100:
+                globals()["shut_up"] = "false"
+                save()
+            elif 1650 <= x <= 1900 and 5 <= y <= 100:
+                globals()["shut_up"] = "extend"
+                save()
+
+    def game_running():
+        globals()["current_GUI"] = "active"
+        globals()["game_end_time"] = time.time() + globals().get("playtime")
+        while time.time() < globals().get("game_end_time"):
+            #global bg_image
+            canvas.delete("all")
+            root.title("Player Initialisation")
+
+            #picture = Image.open("Background.jpeg").resize((1920, 1080))
+            #bg_image = ImageTk.PhotoImage(picture)
+            #canvas.create_image(0, 0, anchor="nw", image=bg_image)
+
+            if r.get("someone_cheated") == "true":
+                for punishment in range(1, globals().get("playercount") + 1):
+                    if r.get(f"player_{punishment}_cheated") == "true" and punishment not in globals().get("idiots"):
+                        r.set(globals().get(f"player_name_{punishment}") + "_counter", -500 * globals().get("hit_points"))
+                        globals().get("idiots").add(punishment)
+                r.set("someone_cheated", "false")
+
+            playertable = 200 + globals().get("playercount") * globals().get("t_size")
+
+            canvas.create_rectangle(0, 0, 50, 50, fill="black", outline="black", width=5)
+            canvas.create_rectangle(1470, 100, 1620, 200, fill="white", outline="black", width=globals().get("uni_width"))
+            canvas.create_text(1540, 125, text="Team", fill="black", font=("Arial", 30, "bold"), anchor="center")
+            canvas.create_text(1540, 175, text="score", fill="black", font=("Arial", 30, "bold"), anchor="center")
+            canvas.create_rectangle(1020, 100, 1470, 200, fill="white", outline="black", width=globals().get("uni_width"))
+            canvas.create_text(1245, 150, text="Team", fill="black", font=("Arial", 30, "bold"), anchor="center")
+            canvas.create_rectangle(200, 100, 650, 200, fill="white", outline="black", width=globals().get("uni_width"))
+            canvas.create_text(425, 150, text="Player", fill="black", font=("Arial", 30, "bold"), anchor="center")
+            canvas.create_rectangle(200, 200, 950, playertable, fill="white", outline="black", width=globals().get("uni_width"))
+            canvas.create_rectangle(650, 100, 950, 200, fill="white", outline="black", width=globals().get("uni_width"))
+            canvas.create_text(875, 125, text="Player", fill="black", font=("Arial", 30, "bold"), anchor="center")
+            canvas.create_text(875, 175, text="score", fill="black", font=("Arial", 30, "bold"), anchor="center")
+            canvas.create_text(725, 125, text="Player", fill="black", font=("Arial", 30, "bold"), anchor="center")
+            canvas.create_text(725, 175, text="health", fill="black", font=("Arial", 30, "bold"), anchor="center")
+            teamcount_regulator = 1
+            globals().get("Already_set_teams").clear()
+            ultimate_line = 0
+
+            for Q in range (1, globals().get("playercount") + 1):
+                canvas.create_rectangle(200, 200 + (Q) * globals().get("t_size"), 950, 200 + (Q-1) * globals().get("t_size"), width=globals().get("uni_width"), fill=globals().get(f"colour_{Q}"), outline="black")
+                if globals().get(f"team_name_alt_{Q}") not in globals().get("Already_set_teams"):
+                    canvas.create_rectangle(1020, 200 + (Q - teamcount_regulator) * globals().get("t_size"), 1470, 200 + (Q - teamcount_regulator + 1) * globals().get("t_size"), fill=globals().get(f"colour_{Q}"), outline="black", width=globals().get("uni_width"))
+                    canvas.create_text(1245, 200 + globals().get("t_size") / 2 + (Q - teamcount_regulator) * globals().get("t_size"), text=globals().get(f"team_name_alt_{Q}"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+                    canvas.create_rectangle(1470, 200 + (Q - teamcount_regulator) * globals().get("t_size"), 1620, 200 + (Q - teamcount_regulator + 1) * globals().get("t_size"), fill=globals().get(f"colour_{Q}"), outline="black", width=globals().get("uni_width"))
+                    canvas.create_text(1545, 200 + globals().get("t_size") / 2 + (Q - teamcount_regulator) * globals().get("t_size"), text=r.get(globals().get(f"team_name_alt_{Q}") + "_team_counter"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+                    globals().get("Already_set_teams").add(globals().get(f'team_name_alt_{Q}'))
+                elif globals().get(f"team_name_alt_{Q}") in globals().get("Already_set_teams"):
+                    teamcount_regulator = teamcount_regulator + 1
+                    ultimate_line = ultimate_line + 1
+                canvas.create_text(425, 200 + globals().get("t_size") / 2 + (Q - 1) * globals().get("t_size"), text=globals().get(f"player_name_{Q}"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+                if globals().get("game_mode") == 1:
+                    canvas.create_text(725, 200 + globals().get("t_size") / 2 + (Q - 1) * globals().get("t_size"), text=r.get(f"Lifes_{Q}"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+                else:
+                    canvas.create_text(725, 200 + globals().get("t_size") / 2 + (Q - 1) * globals().get("t_size"), text="∞", fill="black", font=("Arial", round((globals().get("font_size")/50)*70), "bold"), anchor="center")
+                canvas.create_text(875, 200 + globals().get("t_size") / 2 + (Q - 1) * globals().get("t_size"), text=r.get(globals().get(f"player_name_{Q}") + "_counter"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            canvas.create_line(650, 150, 650, playertable, width=globals().get("uni_width"), fill="black")
+            canvas.create_line(800, 100, 800, playertable, width=globals().get("uni_width"), fill="black")
+            canvas.create_line(1470, 150, 1470, playertable - ultimate_line*globals().get("t_size"), width=globals().get("uni_width"), fill="black")
+            root.update()
+            time.sleep(1.0)
+
+        r.set("game_active", "false")
+        load_results()
+
+    def load_results():
+        globals()["current_GUI"] = "results"
+        canvas.delete("all")
+        playertable = 200 + globals().get("playercount") * globals().get("t_size")
+        for J in range(1, globals().get("playercount") + 1):
+            Top_player = 1
+            for H in range(2, globals().get("playercount") + 1):
+                while Top_player in globals().get("sorted_players"):
+                    Top_player = Top_player + 1
+                if float(r.get(globals().get(f"player_name_{Top_player}") + "_counter")) < float(r.get(globals().get(f"player_name_{H}") + "_counter")) and H not in globals().get("sorted_players"):
+                    Top_player = H
+            globals().get("sorted_players").add(Top_player)
+            globals()[f"place_{J}"] = Top_player
+        canvas.create_rectangle(200-195, 150, 650-195, 200, fill="white", outline="black", width=globals().get("uni_width"))
+        canvas.create_rectangle(1470+295, 150, 1620+295, 200, fill="white", outline="black", width=globals().get("uni_width"))
+        canvas.create_text(1540+295, 175, text="Score", fill="black", font=("Arial", 30, "bold"), anchor="center")
+        canvas.create_rectangle(1020+295, 150, 1470+295, 200, fill="white", outline="black", width=globals().get("uni_width"))
+        canvas.create_text(1245+295, 175, text="Team", fill="black", font=("Arial", 30, "bold"), anchor="center")
+        canvas.create_text(425-195, 175, text="Player", fill="black", font=("Arial", 30, "bold"), anchor="center")
+        canvas.create_rectangle(200-195, 200, 950+255, playertable, fill="white", outline="black", width=globals().get("uni_width"))
+        canvas.create_rectangle(650-195, 150, 950+255, 200, fill="white", outline="black", width=globals().get("uni_width"))
+        canvas.create_rectangle(650-195, 150, 1205, 200, fill="white", outline="black", width=globals().get("uni_width"))
+        canvas.create_text(725-195, 175, text="Score", fill="black", font=("Arial", 30, "bold"), anchor="center")
+        canvas.create_text(875-195, 175, text="Kills", fill="black", font=("Arial", 30, "bold"), anchor="center")
+        canvas.create_text(1025-195, 175, text="F.Fires", fill="black", font=("Arial", 30, "bold"), anchor="center")
+        canvas.create_text(1175-195, 175, text="Shots", fill="black", font=("Arial", 30, "bold"), anchor="center")
+        canvas.create_text(1325-195, 175, text="Got Hit", fill="black", font=("Arial", 30, "bold"), anchor="center")
+
+        teamcount_regulator = 1
+        globals().get("Already_set_teams").clear()
+        ultimate_line = 0
+
+        for Q in range (1, globals().get("playercount") + 1):
+            canvas.create_rectangle(5, 200 + (Q) * globals().get("t_size"), 1400-195, 200 + (Q-1) * globals().get("t_size"), width=globals().get("uni_width"), fill=globals().get(f"colour_{globals().get(f'place_{Q}')}"), outline="black")
+            if globals().get(f"team_name_alt_{globals().get(f'place_{Q}')}") not in globals().get("Already_set_teams"):
+                canvas.create_rectangle(1020+295, 200 + (Q - teamcount_regulator) * globals().get("t_size"), 1470+295, 200 + (Q - teamcount_regulator + 1) * globals().get("t_size"), fill=globals().get(f"colour_{globals().get(f'place_{Q}')}"), outline="black", width=globals().get("uni_width"))
+                canvas.create_text(1245+295, 200 + globals().get("t_size") / 2 + (Q - teamcount_regulator) * globals().get("t_size"), text=globals().get(f"team_name_alt_{globals().get(f'place_{Q}')}"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+                canvas.create_rectangle(1470+295, 200 + (Q - teamcount_regulator) * globals().get("t_size"), 1620+295, 200 + (Q - teamcount_regulator + 1) * globals().get("t_size"), fill=globals().get(f"colour_{globals().get(f'place_{Q}')}"), outline="black", width=globals().get("uni_width"))
+                canvas.create_text(1545+295, 200 + globals().get("t_size") / 2 + (Q - teamcount_regulator) * globals().get("t_size"), text=r.get(globals().get(f"team_name_alt_{globals().get(f'place_{Q}')}") + "_team_counter"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+                globals().get("Already_set_teams").add(globals().get(f"team_name_alt_{globals().get(f'place_{Q}')}"))
+            elif globals().get(f"team_name_alt_{globals().get(f'place_{Q}')}") in globals().get("Already_set_teams"):
+                teamcount_regulator = teamcount_regulator + 1
+                ultimate_line = ultimate_line + 1
+            canvas.create_text(425-195, 200 + globals().get("t_size") / 2 + (Q - 1) * globals().get("t_size"), text=globals().get(f"player_name_{globals().get(f'place_{Q}')}"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            canvas.create_text(875-195, 200 + globals().get("t_size") / 2 + (Q - 1) * globals().get("t_size"), text=r.get(f"Kills_{globals().get(f'place_{Q}')}"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            canvas.create_text(725-195, 200 + globals().get("t_size") / 2 + (Q - 1) * globals().get("t_size"), text=r.get(globals().get(f"player_name_{globals().get(f'place_{Q}')}") + "_counter"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            canvas.create_text(1025-195, 200 + globals().get("t_size") / 2 + (Q - 1) * globals().get("t_size"), text=r.get(f"player_{globals().get(f'place_{Q}')}_ffires"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            canvas.create_text(1175-195, 200 + globals().get("t_size") / 2 + (Q - 1) * globals().get("t_size"), text=r.get(f"player_{globals().get(f'place_{Q}')}_shots"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+            canvas.create_text(1325-195, 200 + globals().get("t_size") / 2 + (Q - 1) * globals().get("t_size"), text=r.get(f"player_{globals().get(f'place_{Q}')}_gothits"), fill="black", font=("Arial", globals().get("font_size"), "bold"), anchor="center")
+        canvas.create_line(650-195, 150, 650-195, playertable, width=globals().get("uni_width"), fill="black")
+        canvas.create_line(800-195, 150, 800-195, playertable, width=globals().get("uni_width"), fill="black")
+        canvas.create_line(950-195, 150, 950-195, playertable, width=globals().get("uni_width"), fill="black")
+        canvas.create_line(1100-195, 150, 1100-195, playertable, width=globals().get("uni_width"), fill="black")
+        canvas.create_line(1250-195, 150, 1250-195, playertable, width=globals().get("uni_width"), fill="black")
+        canvas.create_line(1470+295, 150, 1470+295, playertable - ultimate_line*globals().get("t_size"), width=globals().get("uni_width"), fill="black")
+        canvas.create_rectangle(1400, 5, 1900, 100, fill="", outline="black", width=5)
+        canvas.create_rectangle(1400, 5, 1650, 100, fill="red", outline="", width=0)
+        canvas.create_rectangle(1650, 5, 1900, 100, fill="green", outline="", width=0)
+        canvas.create_text(1650, 50, text="NEW GAME", fill="black", font=("Arial", 40, "bold"))
+        canvas.create_rectangle(0, 0, 50, 50, fill="black", outline="black", width=5)
+
+    def navigate_config_r(event):
+        rx = event.x
+        ry = event.y
+
+        if globals().get("current_GUI") == 2 and globals().get("game_mode") == 1:
+            for z in range(globals().get("playercount")):
+                if 650 <= rx <= 850 and 200 + z * globals().get("t_size") <= ry <= 200 + globals().get("t_size") + z * globals().get("t_size"):
+                    globals()["mode_target"] = z + 1
+                    load_gun_model_picker()
+
+
+    root = tk.Tk()
+    root.title("Lasergame Initialisation")
+    root.geometry("1920x1080")
+
+
+    canvas = tk.Canvas(root, width=1920, height=1080, bg="white")
+    canvas.pack()
+
+    #picture = Image.open("Background.jpeg").resize((1920, 1080))
+    #bg_image = ImageTk.PhotoImage(picture)
+    #canvas.create_image(0, 0, anchor="nw", image=bg_image)
+
+    canvas.create_rectangle(0, 0, 960, 1080, fill="red", outline="black", width=5)
+    canvas.create_text(940, 500, text="Steelsoul: No reviving,", fill="black", font=("Arial", 40, "bold"), anchor="e")
+    canvas.create_text(940, 580, text="death is permanent", fill="black", font=("Arial", 40, "bold"), anchor="e")
+
+    canvas.create_rectangle(960, 0, 1920, 1080, fill="green", outline="black", width=5)
+    canvas.create_text(980, 500, text="Classic mode", fill="black", font=("Arial", 40, "bold"), anchor="w")
+
+    canvas.bind('<Button-3>', navigate_config_r)
+    canvas.bind('<Button-1>', navigate_config)
+    root.protocol("WM_DELETE_WINDOW", lambda: (globals().update({"shut_up": "true"}), save()))
+    root.mainloop()
