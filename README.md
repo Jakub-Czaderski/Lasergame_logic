@@ -9,4 +9,5 @@ The Admin script is supposted to run on the main PC and communicates with the su
 * Can dispence guns at random.
 
 The Sensor_1.py script is the Sensor script for Player one. To adjust for other players, change globals()["my_name"] to the sensor's name. By default, the Admin script gives each a number, but this can be * changed easily.
+
 The Gun_1.py script shares a lot with the Sensor script. It reacts to the anti-cheat measures set by the Sensor.s
