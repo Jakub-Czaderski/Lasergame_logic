@@ -3,7 +3,7 @@ The following handcoded files can be used as Laser Game/ Tag control software, a
 
 The Admin script is supposted to run on the main PC and communicates with the sub-scripts via redis. Settings and Profiles are saved via .json files. Functions I have created are the following:
 * User profiles.
-* Two game modes, involving a classic mode (rvival) and a life model with permanent death  and more guns.
+* Two game modes, involving a classic mode (ervival) and a life model with permanent death  and more guns.
 * More gun modes. Integrated but not balanced are a Minigun, the Classic gun and a Big gun. Entering the selection screen automatically changes the life profile. Disabled during classic mode.
 * Can but does not have to bind the team's name to the selected colour, so it does not have to be re-typed.
 * Can dispence guns at random.
