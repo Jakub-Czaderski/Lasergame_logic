@@ -12,4 +12,6 @@ The Sensor_1.py script is the Sensor script for Player one. To adjust for other 
 
 The Gun_1.py script shares a lot with the Sensor script. It reacts to the anti-cheat measures set by the Sensor.s
 
+The requirements file will, if executed, install all necessary packages.
+
 Update: The Sub-scripts now feature sound and the Admin script looks much better now, but it is entirely dependent to external files and therefore not suitable for downloads for testings, so I did not upload them.
